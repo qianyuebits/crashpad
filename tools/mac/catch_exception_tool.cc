@@ -80,11 +80,13 @@ class ExceptionServer final : public UniversalMachExcServer::Interface {
     *destroy_complex_request = true;
     ++*exceptions_handled_;
 
+    // 🔥 fprintf() 函数主要用于格式化信息输出到指定的文件流中
     fprintf(options_.file,
             "%s: behavior %s",
             me_.c_str(),
-            ExceptionBehaviorToString(
-                behavior, kUseFullName | kUnknownIsNumeric | kUseOr).c_str());
+            ExceptionBehaviorToString(behavior,
+                                      kUseFullName | kUnknownIsNumeric | kUseOr)
+                .c_str());
 
     kern_return_t kr;
     if (ExceptionBehaviorHasIdentity(behavior)) {
@@ -132,10 +134,7 @@ class ExceptionServer final : public UniversalMachExcServer::Interface {
         code_count);
 
     for (size_t index = 0; index < code_count; ++index) {
-      fprintf(options_.file,
-              "%s %#llx",
-              index != 0 ? "," : "",
-              code[index]);
+      fprintf(options_.file, "%s %#llx", index != 0 ? "," : "", code[index]);
     }
 
     if (exception == EXC_CRASH) {
@@ -146,7 +145,8 @@ class ExceptionServer final : public UniversalMachExcServer::Interface {
       fprintf(options_.file,
               ", original exception %s, original code[0] %lld, signal %s",
               ExceptionToString(original_exception,
-                                kUseFullName | kUnknownIsNumeric).c_str(),
+                                kUseFullName | kUnknownIsNumeric)
+                  .c_str(),
               original_code_0,
               SignalToString(signal, kUseFullName | kUnknownIsNumeric).c_str());
     }

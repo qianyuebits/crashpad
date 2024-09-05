@@ -142,11 +142,13 @@ class CrashHandler : public Thread,
     // ReportCrash will record it), but developers probably want to be alerted
     // to the conditon.
     struct sigaction sa;
+    // sigaction() 系统调用用于更改进程在收到特定信号时采取的操作。
     if (sigaction(SIGPIPE, nullptr, &sa) == 0 && sa.sa_handler == SIG_DFL) {
       Signals::InstallHandler(
           SIGPIPE, CatchAndReraiseSignalDefaultAction, 0, nullptr);
     }
-
+    // this 是个代理：ObjcExceptionDelegate
+    // 🔥🔥🔥 针对各种异常设置处理器：来自类 ExceptionPreprocessorState
     InstallObjcExceptionPreprocessor(this);
     INITIALIZATION_STATE_SET_VALID(initialized_);
     return true;

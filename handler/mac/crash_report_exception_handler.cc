@@ -52,9 +52,9 @@ CrashReportExceptionHandler::CrashReportExceptionHandler(
       process_annotations_(process_annotations),
       user_stream_data_sources_(user_stream_data_sources) {}
 
-CrashReportExceptionHandler::~CrashReportExceptionHandler() {
-}
+CrashReportExceptionHandler::~CrashReportExceptionHandler() {}
 
+// 🔥🔥🔥🔥🔥 真正处理异常 Dump 的地方
 kern_return_t CrashReportExceptionHandler::CatchMachException(
     exception_behavior_t behavior,
     exception_handler_t exception_port,
@@ -81,16 +81,18 @@ kern_return_t CrashReportExceptionHandler::CatchMachException(
   if (!ExceptionBehaviorHasIdentity(behavior)) {
     LOG(ERROR) << base::StringPrintf(
         "unexpected exception behavior %s, rejecting",
-        ExceptionBehaviorToString(
-            behavior, kUseFullName | kUnknownIsNumeric | kUseOr).c_str());
+        ExceptionBehaviorToString(behavior,
+                                  kUseFullName | kUnknownIsNumeric | kUseOr)
+            .c_str());
     Metrics::ExceptionCaptureResult(
         Metrics::CaptureResult::kUnexpectedExceptionBehavior);
     return KERN_FAILURE;
   } else if (behavior != (EXCEPTION_STATE_IDENTITY | kMachExceptionCodes)) {
     LOG(WARNING) << base::StringPrintf(
         "unexpected exception behavior %s, proceeding",
-        ExceptionBehaviorToString(
-            behavior, kUseFullName | kUnknownIsNumeric | kUseOr).c_str());
+        ExceptionBehaviorToString(behavior,
+                                  kUseFullName | kUnknownIsNumeric | kUseOr)
+            .c_str());
   }
 
   if (task == mach_task_self()) {
@@ -189,8 +191,7 @@ kern_return_t CrashReportExceptionHandler::CatchMachException(
   }
 
   if (client_options.system_crash_reporter_forwarding != TriState::kDisabled &&
-      (exception == EXC_CRASH ||
-       exception == EXC_RESOURCE ||
+      (exception == EXC_CRASH || exception == EXC_RESOURCE ||
        exception == EXC_GUARD)) {
     // Don’t forward simulated exceptions such as kMachExceptionSimulated to the
     // system crash reporter. Only forward the types of exceptions that it would

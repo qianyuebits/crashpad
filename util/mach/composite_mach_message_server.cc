@@ -27,11 +27,9 @@ CompositeMachMessageServer::CompositeMachMessageServer()
     : MachMessageServer::Interface(),
       handler_map_(),
       request_size_(sizeof(mach_msg_header_t)),
-      reply_size_(sizeof(mig_reply_error_t)) {
-}
+      reply_size_(sizeof(mig_reply_error_t)) {}
 
-CompositeMachMessageServer::~CompositeMachMessageServer() {
-}
+CompositeMachMessageServer::~CompositeMachMessageServer() {}
 
 void CompositeMachMessageServer::AddHandler(
     MachMessageServer::Interface* handler) {
@@ -64,6 +62,7 @@ bool CompositeMachMessageServer::MachMessageServerFunction(
   }
 
   MachMessageServer::Interface* handler = iterator->second;
+  // 循环嵌套啊我去，看：ExcServer<Traits>::MachMessageServerFunction
   return handler->MachMessageServerFunction(in, out, destroy_complex_request);
 }
 

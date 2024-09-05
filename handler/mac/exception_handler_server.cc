@@ -55,8 +55,7 @@ class ExceptionHandlerServerRun : public UniversalMachExcServer::Interface,
   ExceptionHandlerServerRun& operator=(const ExceptionHandlerServerRun&) =
       delete;
 
-  ~ExceptionHandlerServerRun() {
-  }
+  ~ExceptionHandlerServerRun() {}
 
   void Run() {
     DCHECK(running_);
@@ -142,6 +141,7 @@ class ExceptionHandlerServerRun : public UniversalMachExcServer::Interface,
       return KERN_FAILURE;
     }
 
+    // 🔥 对应的实现是 ExceptionHandlerServer
     return exception_interface_->CatchMachException(behavior,
                                                     exception_port,
                                                     thread,
@@ -202,8 +202,7 @@ ExceptionHandlerServer::ExceptionHandlerServer(
   CHECK(notify_port_.is_valid());
 }
 
-ExceptionHandlerServer::~ExceptionHandlerServer() {
-}
+ExceptionHandlerServer::~ExceptionHandlerServer() {}
 
 void ExceptionHandlerServer::Run(
     UniversalMachExcServer::Interface* exception_interface) {

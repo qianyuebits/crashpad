@@ -35,6 +35,7 @@ type child_port_token_t = uint64_t;
 
 import "util/mach/child_port_types.h";
 
+// 🔥：参考 https://book.hacktricks.xyz/v/cn/macos-hardening/macos-security-and-privilege-escalation/macos-proces-abuse/macos-ipc-inter-process-communication/macos-mig-mach-interface-generator
 // Sends a Mach port right across an IPC boundary.
 //
 // server[in]: The server to send the port right to.

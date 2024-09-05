@@ -178,6 +178,10 @@ class ClientData {
       WAITORTIMERCALLBACK crash_dump_request_callback,
       WAITORTIMERCALLBACK non_crash_dump_request_callback,
       WAITORTIMERCALLBACK process_end_callback) {
+    // RegisterWaitForSingleObject:
+    // 指示线程池中的等待线程等待该对象。当发生以下情况之一时，等待线程会将指定的回调函数排队到线程池中：
+    // * 指定的对象处于有信号状态
+    // * 超时间隔已过
     if (!RegisterWaitForSingleObject(&crash_dump_request_thread_pool_wait_,
                                      crash_dump_requested_event_.get(),
                                      crash_dump_request_callback,
@@ -210,6 +214,8 @@ class ClientData {
   // delete this object. Because of this, it must be executed on the main
   // thread, not a threadpool thread.
   void UnregisterThreadPoolWaits() {
+    // Cancels a registered wait operation issued by the
+    // RegisterWaitForSingleObject function.
     UnregisterWaitEx(crash_dump_request_thread_pool_wait_,
                      INVALID_HANDLE_VALUE);
     crash_dump_request_thread_pool_wait_ = INVALID_HANDLE_VALUE;
@@ -240,8 +246,7 @@ class ClientData {
 
 }  // namespace internal
 
-ExceptionHandlerServer::Delegate::~Delegate() {
-}
+ExceptionHandlerServer::Delegate::~Delegate() {}
 
 ExceptionHandlerServer::ExceptionHandlerServer(bool persistent)
     : pipe_name_(),
@@ -249,11 +254,9 @@ ExceptionHandlerServer::ExceptionHandlerServer(bool persistent)
       first_pipe_instance_(),
       clients_lock_(),
       clients_(),
-      persistent_(persistent) {
-}
+      persistent_(persistent) {}
 
-ExceptionHandlerServer::~ExceptionHandlerServer() {
-}
+ExceptionHandlerServer::~ExceptionHandlerServer() {}
 
 void ExceptionHandlerServer::SetPipeName(const std::wstring& pipe_name) {
   DCHECK(pipe_name_.empty());
@@ -320,13 +323,8 @@ void ExceptionHandlerServer::Run(Delegate* delegate) {
     // Ownership of this object (and the pipe instance) is given to the new
     // thread. We close the thread handles at the end of the scope. They clean
     // up the context object and the pipe instance on termination.
-    internal::PipeServiceContext* context =
-        new internal::PipeServiceContext(port_.get(),
-                                         pipe,
-                                         delegate,
-                                         &clients_lock_,
-                                         &clients_,
-                                         shutdown_token);
+    internal::PipeServiceContext* context = new internal::PipeServiceContext(
+        port_.get(), pipe, delegate, &clients_lock_, &clients_, shutdown_token);
     thread_handles[i].reset(
         CreateThread(nullptr, 0, &PipeServiceProc, context, 0, nullptr));
     PCHECK(thread_handles[i].is_valid()) << "CreateThread";
@@ -499,15 +497,14 @@ bool ExceptionHandlerServer::ServiceClientConnection(
 
   // Duplicate the events back to the client so they can request a dump.
   ServerToClientMessage response;
-  response.registration.request_crash_dump_event =
-      HandleToInt(DuplicateEvent(
-          client->process(), client->crash_dump_requested_event()));
+  response.registration.request_crash_dump_event = HandleToInt(
+      DuplicateEvent(client->process(), client->crash_dump_requested_event()));
   response.registration.request_non_crash_dump_event =
-      HandleToInt(DuplicateEvent(
-          client->process(), client->non_crash_dump_requested_event()));
+      HandleToInt(DuplicateEvent(client->process(),
+                                 client->non_crash_dump_requested_event()));
   response.registration.non_crash_dump_completed_event =
-      HandleToInt(DuplicateEvent(
-          client->process(), client->non_crash_dump_completed_event()));
+      HandleToInt(DuplicateEvent(client->process(),
+                                 client->non_crash_dump_completed_event()));
 
   if (!LoggingWriteFile(service_context.pipe(), &response, sizeof(response)))
     return false;
@@ -537,6 +534,7 @@ DWORD __stdcall ExceptionHandlerServer::PipeServiceProc(void* ctx) {
 }
 
 // static
+// 🔥 Crash dump
 void __stdcall ExceptionHandlerServer::OnCrashDumpEvent(void* ctx, BOOLEAN) {
   // This function is executed on the thread pool.
   internal::ClientData* client = reinterpret_cast<internal::ClientData*>(ctx);

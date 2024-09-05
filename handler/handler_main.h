@@ -20,6 +20,7 @@
 
 namespace crashpad {
 
+//! 这里是 crashpad_handler 可执行文件的入口函数，来自于 main 函数的调用
 //! \brief The `main()` of the `crashpad_handler` binary.
 //!
 //! This is exposed so that `crashpad_handler` can be embedded into another

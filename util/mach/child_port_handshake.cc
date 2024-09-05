@@ -79,11 +79,9 @@ ChildPortHandshakeServer::ChildPortHandshakeServer()
     : token_(0),
       port_(MACH_PORT_NULL),
       right_type_(MACH_MSG_TYPE_PORT_NONE),
-      checked_in_(false) {
-}
+      checked_in_(false) {}
 
-ChildPortHandshakeServer::~ChildPortHandshakeServer() {
-}
+ChildPortHandshakeServer::~ChildPortHandshakeServer() {}
 
 mach_port_t ChildPortHandshakeServer::RunServer(
     base::ScopedFD server_write_fd,
@@ -92,13 +90,15 @@ mach_port_t ChildPortHandshakeServer::RunServer(
   DCHECK(!checked_in_);
   DCHECK(server_write_fd.is_valid());
 
-  // Initialize the token and share it with the client via the pipe.
+  // 🔥 Initialize the token and share it with the client via the pipe. 发送
+  // token 到客户端
   token_ = base::RandUint64();
   if (!LoggingWriteFile(server_write_fd.get(), &token_, sizeof(token_))) {
     LOG(WARNING) << "no client check-in";
     return MACH_PORT_NULL;
   }
 
+  // 🔥 创建服务名字
   // Create a unique name for the bootstrap service mapping. Make it unguessable
   // to prevent outsiders from grabbing the name first, which would cause
   // bootstrap_check_in() to fail.
@@ -113,11 +113,12 @@ mach_port_t ChildPortHandshakeServer::RunServer(
 
   // Check the new service in with the bootstrap server, obtaining a receive
   // right for it.
+  // 🔥 注册服务到 bootstrap
   base::apple::ScopedMachReceiveRight server_port(
       BootstrapCheckIn(service_name));
   CHECK(server_port.is_valid());
 
-  // Share the service name with the client via the pipe.
+  // 🔥 Share the service name with the client via the pipe. 发送名字到客户端
   uint32_t service_name_length = service_name.size();
   if (!LoggingWriteFile(server_write_fd.get(),
                         &service_name_length,
@@ -220,6 +221,8 @@ mach_port_t ChildPortHandshakeServer::RunServer(
         while (!checked_in_) {
           // If a proper message is received from child_port_check_in(),
           // this will call HandleChildPortCheckIn().
+          // 🔥 调用 HandleChildPortCheckIn
+          // 这个方法，很重要，可以全局检索，有两处解释这个函数的调用
           mach_msg_return_t mr =
               MachMessageServer::Run(&child_port_server,
                                      server_port_set.get(),
@@ -304,6 +307,7 @@ kern_return_t ChildPortHandshakeServer::HandleChildPortCheckIn(
   DCHECK_EQ(port_, kMachPortNull);
   DCHECK(!checked_in_);
 
+  // 🔥 token 检测
   if (token != token_) {
     // If the token’s not correct, someone’s attempting to spoof the legitimate
     // client.
@@ -334,11 +338,12 @@ kern_return_t ChildPortHandshakeServer::HandleChildPortCheckIn(
 }  // namespace
 
 ChildPortHandshake::ChildPortHandshake()
-    : client_read_fd_(),
-      server_write_fd_() {
+    : client_read_fd_(), server_write_fd_() {
   // Use socketpair() instead of pipe(). There is no way to suppress SIGPIPE on
   // pipes in Mac OS X 10.6, because the F_SETNOSIGPIPE fcntl() command was not
   // introduced until 10.7.
+  // 1. pipe() 用于创建父子进程之间单向通信的匿名管道
+  // 2. socketpair() 用于创建本地进程之间双向通信的链路
   int pipe_fds[2];
   PCHECK(socketpair(AF_UNIX, SOCK_STREAM, PF_UNSPEC, pipe_fds) == 0)
       << "socketpair";
@@ -347,21 +352,24 @@ ChildPortHandshake::ChildPortHandshake()
   server_write_fd_.reset(pipe_fds[1]);
 
   // Simulate pipe() semantics by shutting down the “wrong” sides of the socket.
+  // 通过关闭读写权限，模拟 pipe 单向通信的特征
   PCHECK(shutdown(server_write_fd_.get(), SHUT_RD) == 0) << "shutdown SHUT_RD";
   PCHECK(shutdown(client_read_fd_.get(), SHUT_WR) == 0) << "shutdown SHUT_WR";
 
   // SIGPIPE is undesirable when writing to this pipe. Allow broken-pipe writes
   // to fail with EPIPE instead.
+  // SIGPIPE信号主要用于处理管道或套接字的写入操作。当一个进程向一个已关闭的管道或套接字写入
+  // 数据时，内核会向该进程发送SIGPIPE信号。通常情况下，进程会终止或采取适当的处理措施来处理该信号
   constexpr int value = 1;
   PCHECK(setsockopt(server_write_fd_.get(),
                     SOL_SOCKET,
                     SO_NOSIGPIPE,
                     &value,
-                    sizeof(value)) == 0) << "setsockopt";
+                    sizeof(value)) == 0)
+      << "setsockopt";
 }
 
-ChildPortHandshake::~ChildPortHandshake() {
-}
+ChildPortHandshake::~ChildPortHandshake() {}
 
 base::ScopedFD ChildPortHandshake::ClientReadFD() {
   DCHECK(client_read_fd_.is_valid());
@@ -400,6 +408,7 @@ bool ChildPortHandshake::RunClientForFD(base::ScopedFD client_read_fd,
   // Read the token and the service name from the read side of the pipe.
   child_port_token_t token;
   std::string service_name;
+  // 🔥 读取 token 和 service name
   if (!RunClientInternal_ReadPipe(
           client_read_fd.get(), &token, &service_name)) {
     return false;
@@ -449,8 +458,11 @@ bool ChildPortHandshake::RunClientInternal_SendCheckIn(
   }
 
   // Check in with the server.
-  kern_return_t kr = child_port_check_in(
-      server_port.get(), token, port, right_type);
+  // child_port_check_in 是通过 MIG 跨进程实现的，MIG
+  // 是一个工具，可以通过定义文件生成 Client-Server 形式基于 mach IPC 的 RPC
+  // 代码（这里 mach IPC 指使用 mach port 传递 mach msg）
+  kern_return_t kr =
+      child_port_check_in(server_port.get(), token, port, right_type);
   if (kr != KERN_SUCCESS) {
     MACH_LOG(ERROR, kr) << "child_port_check_in";
     return false;

@@ -123,14 +123,19 @@ bool SpawnSubprocess(const std::vector<std::string>& argv,
     envp_c.push_back(nullptr);
   }
 
-  // The three processes involved are parent, child, and grandchild. The child
-  // exits immediately after spawning the grandchild, so the grandchild becomes
-  // an orphan and its parent process ID becomes 1. This relieves the parent and
-  // child of the responsibility to reap the grandchild with waitpid() or
-  // similar. The grandchild is expected to outlive the parent process, so the
-  // parent shouldn’t be concerned with reaping it. This approach means that
-  // accidental early termination of the handler process will not result in a
-  // zombie process.
+  // 参与的三个进程是父进程、子进程和孙进程。子进程在生成孙进程后立即退出，
+  // 因此孙进程成为孤儿进程，其父进程ID变为1。这使得父进程和子进程不再需要
+  // 使用 waitpid() 或类似方法来回收孙进程。预计孙进程的生命周期会长于父进程，
+  // 所以父进程无需担心回收它。这个方法可以确保即使处理器进程意外过早终止，
+  // 也不会产生僵尸进程。
+  // The three processes involved are parent, child, and
+  // grandchild. The child exits immediately after spawning the grandchild, so
+  // the grandchild becomes an orphan and its parent process ID becomes 1. This
+  // relieves the parent and child of the responsibility to reap the grandchild
+  // with waitpid() or similar. The grandchild is expected to outlive the parent
+  // process, so the parent shouldn’t be concerned with reaping it. This
+  // approach means that accidental early termination of the handler process
+  // will not result in a zombie process.
   pid_t pid = fork();
   if (pid < 0) {
     PLOG(ERROR) << "fork";
@@ -141,7 +146,7 @@ bool SpawnSubprocess(const std::vector<std::string>& argv,
     // Child process.
 
     if (child_function) {
-      child_function();
+      child_function();  // 组合调用 Bootstrap 等一系列方法
     }
 
     // Call setsid(), creating a new process group and a new session, both led
@@ -194,9 +199,12 @@ bool SpawnSubprocess(const std::vector<std::string>& argv,
                 << argv_for_spawn[0];
 #else
 #if BUILDFLAG(IS_APPLE)
+    // 🔥 这里才是 Apple 的代码
     PosixSpawnAttr attr;
     attr.SetFlags(POSIX_SPAWN_CLOEXEC_DEFAULT);
 
+    // 🔥🔥🔥 继承标准 FD 以及用于 IPC 的 preserve_fd（用于写入信息）
+    // 传输 FD 就是在这里进行的！！
     PosixSpawnFileActions file_actions;
     for (int fd = 0; fd <= STDERR_FILENO; ++fd) {
       file_actions.AddInheritedFileDescriptor(fd);
@@ -206,18 +214,25 @@ bool SpawnSubprocess(const std::vector<std::string>& argv,
     const posix_spawnattr_t* attr_p = attr.Get();
     const posix_spawn_file_actions_t* file_actions_p = file_actions.Get();
 #else
+    // 子进程中，关闭除了标准输出以及 preserve_fd 之外的其他 FD
     CloseMultipleNowOrOnExec(STDERR_FILENO + 1, preserve_fd);
 
     const posix_spawnattr_t* attr_p = nullptr;
     const posix_spawn_file_actions_t* file_actions_p = nullptr;
 #endif
 
+    // 🔥 创建孙子进程：启动 handler 运行的独立进程
+    // 1. 这个进程应该可以获取到 port 来监听 crash：怎么传递的？✅ fd or server
+    // name
+    // 2. handler 的运行逻辑是什么样的？ ✅ handler 文件夹下面有个 main.cc
+    // 以下两个方法的主要区别在于如何寻找并执行要启动的程序
     auto posix_spawn_fp = use_path ? posix_spawnp : posix_spawn;
     if ((errno = posix_spawn_fp(nullptr,
+                                // 新启动一个进程，加载执行 handler 执行文件
                                 argv_for_spawn[0],
                                 file_actions_p,
                                 attr_p,
-                                argv_for_spawn,
+                                argv_for_spawn,  // 包含 fd
                                 envp_for_spawn)) != 0) {
       PLOG(FATAL) << (use_path ? "posix_spawnp" : "posix_spawn") << " "
                   << argv_for_spawn[0];
@@ -228,6 +243,7 @@ bool SpawnSubprocess(const std::vector<std::string>& argv,
 #endif
   }
 
+  // 等待子进程结束
   // waitpid() for the child, so that it does not become a zombie process. The
   // child normally exits quickly.
   //

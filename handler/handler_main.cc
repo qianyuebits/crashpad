@@ -334,12 +334,10 @@ void HandleCrashSignal(int sig, siginfo_t* siginfo, void* context) {
   // (acknowledged by the standard) is for negative numbers to indicate that a
   // signal was generated asynchronously. Although xnu does not do this, allow
   // for the possibility for completeness.
-  bool si_code_valid = !(siginfo->si_code <= 0 ||
-                         siginfo->si_code == SI_USER ||
-                         siginfo->si_code == SI_QUEUE ||
-                         siginfo->si_code == SI_TIMER ||
-                         siginfo->si_code == SI_ASYNCIO ||
-                         siginfo->si_code == SI_MESGQ);
+  bool si_code_valid =
+      !(siginfo->si_code <= 0 || siginfo->si_code == SI_USER ||
+        siginfo->si_code == SI_QUEUE || siginfo->si_code == SI_TIMER ||
+        siginfo->si_code == SI_ASYNCIO || siginfo->si_code == SI_MESGQ);
 
   // 0x5343 = 'SC', signifying “signal and code”, disambiguates from the schema
   // used by ExceptionCodeForMetrics(). That system primarily uses Mach
@@ -383,9 +381,7 @@ void InstallCrashHandler() {
 #if BUILDFLAG(IS_APPLE)
 
 struct ResetSIGTERMTraits {
-  static struct sigaction* InvalidValue() {
-    return nullptr;
-  }
+  static struct sigaction* InvalidValue() { return nullptr; }
 
   static void Free(struct sigaction* sa) {
     int rv = sigaction(SIGTERM, sa, nullptr);
@@ -779,8 +775,7 @@ int HandlerMain(int argc,
 #if BUILDFLAG(IS_WIN)
       case kOptionInitialClientData: {
         if (!options.initial_client_data.InitializeFromString(optarg)) {
-          ToolSupport::UsageHint(
-              me, "failed to parse --initial-client-data");
+          ToolSupport::UsageHint(me, "failed to parse --initial-client-data");
           return ExitFailure();
         }
         break;
@@ -1045,9 +1040,7 @@ int HandlerMain(int argc,
 #if BUILDFLAG(IS_CHROMEOS_ASH) || BUILDFLAG(IS_CHROMEOS_LACROS)
   if (options.use_cros_crash_reporter) {
     auto cros_handler = std::make_unique<CrosCrashReportExceptionHandler>(
-        database.get(),
-        &options.annotations,
-        user_stream_sources);
+        database.get(), &options.annotations, user_stream_sources);
 
     if (!options.minidump_dir_for_tests.empty()) {
       cros_handler->SetDumpDir(options.minidump_dir_for_tests);
@@ -1115,11 +1108,11 @@ int HandlerMain(int argc,
 
   base::apple::ScopedMachReceiveRight receive_right;
 
+  // 🔥 通过 FD 来创建通道
   if (options.handshake_fd >= 0) {
-    receive_right.reset(
-        ChildPortHandshake::RunServerForFD(
-            base::ScopedFD(options.handshake_fd),
-            ChildPortHandshake::PortRightType::kReceiveRight));
+    receive_right.reset(ChildPortHandshake::RunServerForFD(
+        base::ScopedFD(options.handshake_fd),
+        ChildPortHandshake::PortRightType::kReceiveRight));
   } else if (!options.mach_service.empty()) {
     receive_right = BootstrapCheckIn(options.mach_service);
   }
@@ -1191,6 +1184,7 @@ int HandlerMain(int argc,
   }
 #endif  // BUILDFLAG(IS_WIN)
 
+  // 🔥🔥🔥
   exception_handler_server.Run(exception_handler.get());
 
   return EXIT_SUCCESS;

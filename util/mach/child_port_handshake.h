@@ -205,10 +205,12 @@ class ChildPortHandshake {
   //! “read” side of the pipe is closed in the server process prior to calling
   //! this function.
   //!
-  //! This function performs these tasks:
-  //!  - Creates a random token and sends it via the pipe.
+  //! This function performs these tasks: 🔥🔥
+  //!  - Creates a random token and sends it via the pipe. 创建随机 token
   //!  - Checks its service in with the bootstrap server, and sends the name
-  //!    of its bootstrap service mapping via the pipe.
+  //!    of its bootstrap service mapping via the pipe. 创建 Service
+  //!    Name，注册到 Bootstrap，并通过 pipe 发送
+  //!   同步等待接受一个有效的信息
   //!  - Simultaneously receives messages on its Mach server and monitors the
   //!    pipe for end-of-file. This is a blocking operation.
   //!  - When a Mach message is received, calls HandleChildPortCheckIn() to
@@ -217,10 +219,10 @@ class ChildPortHandshake {
   //!    this method will continue waiting for a valid message. Valid messages
   //!    are properly formatted and have the correct token. The right carried in
   //!    a valid message will be returned. If a message is not valid, this
-  //!    method will continue waiting for pipe EOF or a valid message.
+  //!    method will continue waiting for pipe EOF or a valid message. IPC 通信
   //!  - When notified of pipe EOF, returns `MACH_PORT_NULL`.
   //!  - Regardless of return value, destroys the server’s receive right and
-  //!    closes the pipe.
+  //!    closes the pipe. 最后关闭 Pipe
   //!
   //! \param[in] server_write_fd The write side of the pipe shared with the
   //!     client process. This function takes ownership of this file descriptor,

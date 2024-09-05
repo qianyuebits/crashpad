@@ -285,6 +285,7 @@ bool ExcServer<Traits>::MachMessageServerFunction(
 
       using Reply = typename Traits::ExceptionRaiseReply;
       Reply* out_reply = reinterpret_cast<Reply*>(out_header);
+      // 🔥 捕获异常
       out_reply->RetCode =
           interface_->CatchExceptionRaise(in_header->msgh_local_port,
                                           in_request->thread.name,
@@ -656,11 +657,9 @@ class UniversalMachExcServerImpl final
 UniversalMachExcServer::UniversalMachExcServer(
     UniversalMachExcServer::Interface* interface)
     : MachMessageServer::Interface(),
-      impl_(new internal::UniversalMachExcServerImpl(interface)) {
-}
+      impl_(new internal::UniversalMachExcServerImpl(interface)) {}
 
-UniversalMachExcServer::~UniversalMachExcServer() {
-}
+UniversalMachExcServer::~UniversalMachExcServer() {}
 
 bool UniversalMachExcServer::MachMessageServerFunction(
     const mach_msg_header_t* in_header,

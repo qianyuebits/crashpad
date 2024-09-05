@@ -101,8 +101,8 @@ bool HaveCapSysPtrace() {
   __user_cap_data_struct cap_data[_LINUX_CAPABILITY_U32S_3];
   if (syscall(SYS_capget, &cap_header, &cap_data) != 0) {
     PLOG(ERROR) << "capget";
-    LOG_IF(ERROR, errno == EINVAL) << "cap_header.version " << std::hex
-                                   << cap_header.version;
+    LOG_IF(ERROR, errno == EINVAL)
+        << "cap_header.version " << std::hex << cap_header.version;
     return false;
   }
 

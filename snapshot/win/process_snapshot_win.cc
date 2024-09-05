@@ -48,8 +48,7 @@ ProcessSnapshotWin::ProcessSnapshotWin()
       options_(),
       initialized_() {}
 
-ProcessSnapshotWin::~ProcessSnapshotWin() {
-}
+ProcessSnapshotWin::~ProcessSnapshotWin() {}
 
 bool ProcessSnapshotWin::Initialize(
     HANDLE process,
@@ -85,6 +84,7 @@ bool ProcessSnapshotWin::Initialize(
 
   if (exception_information_address != 0) {
     ExceptionInformation exception_information = {};
+    // 🔥：读取特定结构里面的数据（存储着 dump 信息）
     if (!process_reader_.Memory()->Read(exception_information_address,
                                         sizeof(exception_information),
                                         &exception_information)) {

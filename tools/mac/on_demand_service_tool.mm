@@ -95,7 +95,7 @@ int OnDemandServiceToolMain(int argc, char* argv[]) {
 
   int opt;
   while ((opt = getopt_long(argc, argv, "+LUl:m:", long_options, nullptr)) !=
-          -1) {
+         -1) {
     switch (opt) {
       case kOptionLoadJob:
         options.operation = kOperationLoadJob;

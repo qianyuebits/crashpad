@@ -126,6 +126,8 @@ StartupState BlockUntilHandlerStartedOrFailed() {
 extern "C" LONG __asan_unhandled_exception_filter(EXCEPTION_POINTERS* info);
 #endif
 
+// 🔥🔥🔥🔥 关键：处理 Windows 上发生的 Crash
+// EXCEPTION_POINTERS：包含一条异常记录，内含与机器无关的异常描述，以及一条上下文记录，内含与机器有关的异常发生时的处理器上下文描述。
 LONG WINAPI UnhandledExceptionHandler(EXCEPTION_POINTERS* exception_pointers) {
 #if defined(ADDRESS_SANITIZER)
   // In ASan builds, delegate to the ASan exception filter.
@@ -134,11 +136,13 @@ LONG WINAPI UnhandledExceptionHandler(EXCEPTION_POINTERS* exception_pointers) {
     return status;
 #endif
 
+  // 🔥 如果 Handler 没有成功启动，则直接结束，避免不必要的等待
   if (BlockUntilHandlerStartedOrFailed() == StartupState::kFailed) {
     // If we know for certain that the handler has failed to start, then abort
     // here, rather than trying to signal to a handler that will never arrive,
     // and then sleeping unnecessarily.
     LOG(ERROR) << "crash server failed to launch, self-terminating";
+    // Win API
     SafeTerminateProcess(GetCurrentProcess(), kTerminationCodeCrashNoDump);
     return EXCEPTION_CONTINUE_SEARCH;
   }
@@ -170,8 +174,10 @@ LONG WINAPI UnhandledExceptionHandler(EXCEPTION_POINTERS* exception_pointers) {
   g_crash_exception_information.exception_pointers =
       FromPointerCast<WinVMAddress>(exception_pointers);
 
-  // Now signal the crash server, which will take a dump and then terminate us
-  // when it's complete.
+  // 🔥 现在通知服务器，我们马上会生产一个 dump
+  // 并且结束自己，这里有个特别的方法调用，感觉和 IPC 调用有关系 Now signal the
+  // crash server, which will take a dump and then terminate us when it's
+  // complete.
   SetEvent(g_signal_exception);
 
   // Time to wait for the handler to create a dump.
@@ -190,6 +196,7 @@ LONG WINAPI UnhandledExceptionHandler(EXCEPTION_POINTERS* exception_pointers) {
 }
 
 #if !defined(ADDRESS_SANITIZER)
+// 🔥 还可以处理堆损情况
 LONG WINAPI HandleHeapCorruption(EXCEPTION_POINTERS* exception_pointers) {
   if (exception_pointers->ExceptionRecord->ExceptionCode ==
       STATUS_HEAP_CORRUPTION) {
@@ -252,6 +259,7 @@ bool IsInheritableHandle(HANDLE handle) {
   return handle_type == FILE_TYPE_DISK || handle_type == FILE_TYPE_PIPE;
 }
 
+// 🔥 关于继承 Handle 到子进程的一些说明
 // Adds |handle| to |handle_list| if it appears valid, and is not already in
 // |handle_list|.
 //
@@ -304,6 +312,7 @@ void CreatePipe(std::wstring* pipe_name, ScopedFileHANDLE* pipe_instance) {
   do {
     *pipe_name = base::UTF8ToWide(pipe_name_base + RandomString());
 
+    // 🔥 CreateNamedPipe 是 Win 方法
     pipe_instance->reset(CreateNamedPipeInstance(*pipe_name, true));
 
     // CreateNamedPipe() is documented as setting the error to
@@ -410,10 +419,12 @@ bool StartHandlerProcess(
   }
   for (const base::FilePath& attachment : data->attachments) {
     AppendCommandLineArgument(
-        FormatArgumentString("attachment", attachment.value()),
-        &command_line);
+        FormatArgumentString("attachment", attachment.value()), &command_line);
   }
 
+  // OpenProcess
+  // 函数用来打开一个已存在的进程对象，并返回进程的句柄，这里最重要的权限是
+  // PROCESS_VM_READ，方便让 handler 进程读取内存信息
   ScopedKernelHANDLE this_process(
       OpenProcess(kXPProcessAllAccess, true, GetCurrentProcessId()));
   if (!this_process.is_valid()) {
@@ -529,6 +540,7 @@ bool StartHandlerProcess(
   }
 
   PROCESS_INFORMATION process_info;
+  // 🔥 创建进程
   rv = CreateProcess(
       is_embedded_in_dll ? nullptr : data->handler.value().c_str(),
       &command_line[0],
@@ -609,6 +621,7 @@ bool CrashpadClient::StartHandler(
     const std::vector<base::FilePath>& attachments) {
   DCHECK(ipc_pipe_.empty());
 
+  // 在主线程创建 Pipe 和 Signal
   // Both the pipe and the signalling events have to be created on the main
   // thread (not the spawning thread) so that they're valid after we return from
   // this function.
@@ -619,6 +632,11 @@ bool CrashpadClient::StartHandler(
   security_attributes.nLength = sizeof(SECURITY_ATTRIBUTES);
   security_attributes.bInheritHandle = true;
 
+  // 🔥 CreateEvent 用来创建或打开一个命名的或无名的事件对象，返回的是句柄
+  // 一个 Event 被创建以后，可以用 OpenEvent() API 来获得它的 Handle，用
+  // CloseHandle() 来关闭它，用 SetEvent（）或
+  // PulseEvent（）来设置它使其有信号，用 ResetEvent() 来使其无信号，用
+  // WaitForSingleObject() 或 WaitForMultipleObjects() 来等待其变为有信号
   g_signal_exception =
       CreateEvent(&security_attributes, false /* auto reset */, false, nullptr);
   g_wer_registration.dump_without_crashing =
@@ -640,6 +658,8 @@ bool CrashpadClient::StartHandler(
                                                    ipc_pipe_,
                                                    std::move(ipc_pipe_handle));
 
+  // 🔥 是否要异步启动：区别只是是否要启动一个单独的线程，都会调用
+  // StartHandlerProcess
   if (asynchronous_start) {
     // It is important that the current thread not be synchronized with the
     // thread that is created here. StartHandler() needs to be callable inside a
@@ -668,6 +688,10 @@ bool CrashpadClient::StartHandler(
 }
 
 void CrashpadClient::RegisterHandlers() {
+  // SetUnhandledExceptionFilter 允许应用程序取代 RTSS
+  // 放置在每个线程和进程顶部的顶级异常处理程序。调用此函数后，如果进程中发生异常，并且系统对处理程序的扫描到达
+  // RTSS 未处理异常过滤器，则该过滤器将调用 lpTopLevelExceptionFilter
+  // 参数指定的异常过滤器函数。
   SetUnhandledExceptionFilter(&UnhandledExceptionHandler);
 
   // Windows swallows heap corruption failures but we can intercept them with
@@ -699,6 +723,7 @@ void CrashpadClient::RegisterHandlers() {
   // expect it to cause a crash dump. This will only work when the abort()
   // that's called in client code is the same (or has the same behavior) as the
   // one in use here.
+  // 🔥 看上面解释，只有 SIGABRT 信号需要处理
   void (*rv)(int) = signal(SIGABRT, HandleAbortSignal);
   DCHECK_NE(rv, SIG_ERR);
 }
@@ -795,6 +820,8 @@ bool CrashpadClient::RegisterWerModule(const std::wstring& path) {
   g_wer_registration.pointers.ExceptionRecord = &g_wer_registration.exception;
   g_wer_registration.pointers.ContextRecord = &g_wer_registration.context;
 
+  // 注册一个自定义运行时异常处理程序，用于为崩溃提供自定义 Windows 错误报告
+  // (WER)。
   HRESULT res =
       WerRegisterRuntimeExceptionModule(path.c_str(), &g_wer_registration);
   return res == S_OK;
@@ -859,7 +886,7 @@ void CrashpadClient::DumpWithoutCrash(const CONTEXT& context) {
   g_wer_registration.in_dump_without_crashing = false;
 }
 
-// static
+// static 独立方法，目前没有看到调用
 void CrashpadClient::DumpAndCrash(EXCEPTION_POINTERS* exception_pointers) {
   if (g_signal_exception == INVALID_HANDLE_VALUE) {
     LOG(ERROR) << "not connected";

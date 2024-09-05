@@ -219,6 +219,7 @@ mach_msg_return_t MachMessageServer::Run(Interface* interface,
     mach_msg_header_t* request_header = request.Header();
     mach_msg_header_t* reply_header = reply.Header();
     bool destroy_complex_request = false;
+    // interface 指向 CompositeMachMessageServer
     interface->MachMessageServerFunction(
         request_header, reply_header, &destroy_complex_request);
 
@@ -257,6 +258,7 @@ mach_msg_return_t MachMessageServer::Run(Interface* interface,
               ? kMachMessageDeadlineNonblocking
               : deadline;
 
+      // 🔥 发送 Reply 消息
       kr = MachMessageWithDeadline(reply_header,
                                    options | MACH_SEND_MSG,
                                    0,
@@ -266,8 +268,7 @@ mach_msg_return_t MachMessageServer::Run(Interface* interface,
                                    true);
 
       if (kr != MACH_MSG_SUCCESS) {
-        if (kr == MACH_SEND_INVALID_DEST ||
-            kr == MACH_SEND_TIMED_OUT ||
+        if (kr == MACH_SEND_INVALID_DEST || kr == MACH_SEND_TIMED_OUT ||
             kr == MACH_SEND_INTERRUPTED) {
           mach_msg_destroy(reply_header);
         }

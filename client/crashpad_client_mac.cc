@@ -81,7 +81,10 @@ std::string FormatArgumentInt(const std::string& name, int value) {
 // EXC_MASK_RESOURCE and EXC_MASK_GUARD are not available on all systems, and
 // the kernel will reject attempts to use them if it does not understand them,
 // so AND them with ExcMaskValid(). EXC_MASK_CRASH is always supported.
+// exception_handler_t 是 mach_port_t 的别名
 bool SetCrashExceptionPorts(exception_handler_t exception_handler) {
+  // 详细参见：https://github.com/SunshineBrother/JHBlog/blob/master/iOS%E7%9F%A5%E8%AF%86%E7%82%B9/iOS%E5%A4%A7%E6%9D%82%E7%83%A9/Crash%E6%94%B6%E9%9B%86/1%E3%80%81Crash%E4%BA%A7%E7%94%9F%E5%8E%9F%E5%9B%A0.md
+  // 简单来说，就是将一个 port 设置为异常捕捉的端口，而且是 Task（进程）级别
   ExceptionPorts exception_ports(ExceptionPorts::kTargetTypeTask, TASK_NULL);
   return exception_ports.SetExceptionPort(
       (EXC_MASK_CRASH | EXC_MASK_RESOURCE | EXC_MASK_GUARD) & ExcMaskValid(),
@@ -90,11 +93,12 @@ bool SetCrashExceptionPorts(exception_handler_t exception_handler) {
       MACHINE_THREAD_STATE);
 }
 
+// 一个工具类，与 pthread_create
+// 相关：https://docs.oracle.com/cd/E19253-01/819-7051/attrib-74380/index.html
 class ScopedPthreadAttrDestroy {
  public:
   explicit ScopedPthreadAttrDestroy(pthread_attr_t* pthread_attr)
-      : pthread_attr_(pthread_attr) {
-  }
+      : pthread_attr_(pthread_attr) {}
 
   ScopedPthreadAttrDestroy(const ScopedPthreadAttrDestroy&) = delete;
   ScopedPthreadAttrDestroy& operator=(const ScopedPthreadAttrDestroy&) = delete;
@@ -131,6 +135,9 @@ class HandlerStarter final : public NotifyServer::DefaultInterface {
       const std::map<std::string, std::string>& annotations,
       const std::vector<std::string>& arguments,
       bool restartable) {
+    // 源码：https://android.googlesource.com/platform/external/chromium_org/+/refs/tags/android-cts-5.1_r24/base/mac/scoped_mach_port.h
+    // 关于 NewMacPort：Creates a new Mach port in the current task. This
+    // function wraps the mach_port_allocate() providing a simpler interface.
     base::apple::ScopedMachReceiveRight receive_right(
         NewMachPort(MACH_PORT_RIGHT_RECEIVE));
     if (!receive_right.is_valid()) {
@@ -139,6 +146,9 @@ class HandlerStarter final : public NotifyServer::DefaultInterface {
 
     mach_port_t port;
     mach_msg_type_name_t right_type;
+    // mach_port_extract_right:
+    // 从目标任务中删除指定的权限并将其返回给调用者，返回的是被删除的权限
+    // 这里删除的其实是发送权限
     kern_return_t kr = mach_port_extract_right(mach_task_self(),
                                                receive_right.get(),
                                                MACH_MSG_TYPE_MAKE_SEND,
@@ -163,6 +173,7 @@ class HandlerStarter final : public NotifyServer::DefaultInterface {
       }
     }
 
+    // 过程中会创建子进程
     if (!CommonStart(handler,
                      database,
                      metrics_dir,
@@ -229,8 +240,7 @@ class HandlerStarter final : public NotifyServer::DefaultInterface {
         annotations_(),
         arguments_(),
         notify_port_(NewMachPort(MACH_PORT_RIGHT_RECEIVE)),
-        last_start_time_(0) {
-  }
+        last_start_time_(0) {}
 
   //! \brief Starts a Crashpad handler.
   //!
@@ -267,6 +277,7 @@ class HandlerStarter final : public NotifyServer::DefaultInterface {
       // a send-once right, so once the notification is received, it won’t be
       // sent again unless re-requested.
       mach_port_t previous;
+      // Request notification of the specified port event type
       kern_return_t kr =
           mach_port_request_notification(mach_task_self(),
                                          receive_right.get(),
@@ -310,6 +321,7 @@ class HandlerStarter final : public NotifyServer::DefaultInterface {
       handler_restarter->last_start_time_ = ClockMonotonicNanoseconds();
     }
 
+    // 一组 FD，传递 port 校验所需要的 token 以及权限等
     ChildPortHandshake child_port_handshake;
     base::ScopedFD server_write_fd = child_port_handshake.ServerWriteFD();
 
@@ -344,6 +356,7 @@ class HandlerStarter final : public NotifyServer::DefaultInterface {
     // this parent process, which was probably using the exception server now
     // being restarted. The handler can’t monitor itself for its own crashes via
     // this interface.
+    // 🔥 创建子进程
     if (!SpawnSubprocess(
             argv,
             nullptr,
@@ -355,6 +368,8 @@ class HandlerStarter final : public NotifyServer::DefaultInterface {
 
     // Close the write side of the pipe, so that the handler process is the only
     // process that can write to it.
+    // 是从 handler 进程往主进程写，主进程关闭了写入的 fd，以后 fork
+    // 出来的进程也写不了了。
     server_write_fd.reset();
 
     // Rendezvous with the handler running in the grandchild process.
@@ -437,12 +452,11 @@ class HandlerStarter final : public NotifyServer::DefaultInterface {
 
 }  // namespace
 
-CrashpadClient::CrashpadClient() : exception_port_(MACH_PORT_NULL) {
-}
+CrashpadClient::CrashpadClient() : exception_port_(MACH_PORT_NULL) {}
 
-CrashpadClient::~CrashpadClient() {
-}
+CrashpadClient::~CrashpadClient() {}
 
+// 🔥🔥🔥 正主，入口
 bool CrashpadClient::StartHandler(
     const base::FilePath& handler,
     const base::FilePath& database,
@@ -459,6 +473,10 @@ bool CrashpadClient::StartHandler(
   // The “restartable” behavior can only be selected on OS X 10.10 and later. In
   // previous OS versions, if the initial client were to crash while attempting
   // to restart the handler, it would become an unkillable process.
+  // HandlerStarter::InitialStart 方法获得一个 ScopedMachSendRight
+  // 对象，之后隐式转换为 mach_port_t（ScopedMachSendRight 支持），重新创建一个
+  // ScopedMachSendRight
+  // 🔥 创建一个接受 Crash 的 port
   base::apple::ScopedMachSendRight exception_port(HandlerStarter::InitialStart(
       handler,
       database,
@@ -472,10 +490,12 @@ bool CrashpadClient::StartHandler(
     return false;
   }
 
+  // 🔥 设置这个 port
   SetHandlerMachPort(std::move(exception_port));
   return true;
 }
 
+// BootstrapLookUp 相关：向 bootstrap 注册/获取服务（port）
 bool CrashpadClient::SetHandlerMachService(const std::string& service_name) {
   base::apple::ScopedMachSendRight exception_port(
       BootstrapLookUp(service_name));

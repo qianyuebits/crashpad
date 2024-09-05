@@ -52,6 +52,9 @@ ssize_t ProcessMemoryWin::ReadUpTo(VMAddress address,
   DCHECK_LE(size, (size_t)std::numeric_limits<ssize_t>::max());
 
   SIZE_T size_out = 0;
+  // 🔥 Windows 可以跨进程读取其他进程的内存数据，ReadProcessMemory：
+  // ReadProcessMemory将指定进程的地址空间中指定地址范围内的数据复制到当前进程的指定缓冲区中。任何具有
+  // PROCESS_VM_READ 访问句柄的进程都可以调用该函数。
   BOOL success = ReadProcessMemory(
       handle_, reinterpret_cast<void*>(address), buffer, size, &size_out);
   if (success)
